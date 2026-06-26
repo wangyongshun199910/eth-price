@@ -27,17 +27,12 @@
     color: #fff;
   }
   .card {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 16px;
+    background: transparent;
     padding: 28px 36px 24px;
     min-width: 360px;
     max-width: 480px;
-    box-shadow: 0 0 40px rgba(77, 166, 255, 0.08);
     transition: box-shadow 0.6s;
   }
-  .card:hover { box-shadow: 0 0 60px rgba(77, 166, 255, 0.15); }
-
   .header {
     display: flex;
     justify-content: space-between;
@@ -52,7 +47,8 @@
     text-transform: uppercase;
   }
   .status-dot {
-    width: 8px; height: 8px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: #4da6ff;
     animation: pulse 2s infinite;
@@ -61,7 +57,6 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
   }
-
   .price-area {
     text-align: center;
     padding: 10px 0 16px;
@@ -77,14 +72,12 @@
   }
   .price.up { color: #00e676; }
   .price.down { color: #ff5252; }
-
   .update-time {
     color: var(--time);
     font-size: 12px;
     text-align: center;
     margin-bottom: 14px;
   }
-
   .controls {
     display: flex;
     align-items: center;
@@ -109,7 +102,8 @@
   }
   .font-control input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 16px; height: 16px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
     background: var(--slider-thumb);
     cursor: pointer;
@@ -119,7 +113,6 @@
     font-weight: bold;
     min-width: 28px;
   }
-
   .sources {
     display: flex;
     gap: 4px;
@@ -139,7 +132,6 @@
     border-color: var(--source-active);
     color: #fff;
   }
-
   .error-msg {
     display: none;
     margin-top: 12px;
@@ -153,19 +145,15 @@
 </style>
 </head>
 <body>
-
 <div class="card">
   <div class="header">
     <span class="label">ETH / USDT</span>
     <div class="status-dot" id="dot"></div>
   </div>
-
   <div class="price-area">
     <div class="price" id="price" style="font-size:42px;">$ ----.--</div>
   </div>
-
   <div class="update-time" id="time">--</div>
-
   <div class="controls">
     <div class="font-control">
       <span>A</span>
@@ -175,20 +163,14 @@
     </div>
     <div class="sources" id="sources"></div>
   </div>
-
   <div class="error-msg" id="error"></div>
 </div>
-
 <script>
 const API_SOURCES = [
-  { name: "Binance", url: "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT",
-    parse: d => parseFloat(d.price) },
-  { name: "Bybit", url: "https://api.bybit.com/v5/market/tickers?category=spot&symbol=ETHUSDT",
-    parse: d => parseFloat(d.result.list[0].lastPrice) },
-  { name: "OKX", url: "https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT",
-    parse: d => parseFloat(d.data[0].last) },
-  { name: "Bitget", url: "https://api.bitget.com/api/v2/spot/market/tickers?symbol=ETHUSDT",
-    parse: d => parseFloat(d.data[0].lastPr) },
+  { name: "Binance", url: "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT", parse: d => parseFloat(d.price) },
+  { name: "Bybit",  url: "https://api.bybit.com/v5/market/tickers?category=spot&symbol=ETHUSDT", parse: d => parseFloat(d.result.list[0].lastPrice) },
+  { name: "OKX",    url: "https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT", parse: d => parseFloat(d.data[0].last) },
+  { name: "Bitget", url: "https://api.bitget.com/api/v2/spot/market/tickers?symbol=ETHUSDT", parse: d => parseFloat(d.data[0].lastPr) },
 ];
 
 const priceEl = document.getElementById("price");
@@ -240,9 +222,12 @@ async function fetchPrice(src) {
 
 function updateUI(price, srcName) {
   let text;
-  if (price >= 10000) text = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  else if (price >= 1) text = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
-  else text = "$" + price.toFixed(6);
+  if (price >= 10000)
+    text = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  else if (price >= 1)
+    text = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  else
+    text = "$" + price.toFixed(6);
 
   priceEl.textContent = text;
 
@@ -286,6 +271,5 @@ setInterval(() => {
   if (activeRequests < MAX_CONCURRENT) schedule();
 }, 800);
 </script>
-
 </body>
 </html>
