@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETH/USDT 实时价格</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --price: #4da6ff;
+    --label: #aaaaaa;
+    --time: #888888;
+    --card-bg: #16213e;
+    --border: #0f3460;
+    --slider-track: #0f3460;
+    --slider-thumb: #4da6ff;
+    --source-active: #e94560;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    font-family: 'Consolas', 'Courier New', monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    color: #fff;
+  }
+  .card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 36px 24px;
+    min-width: 360px;
+    max-width: 480px;
+    box-shadow: 0 0 40px rgba(77, 166, 255, 0.08);
+    transition: box-shadow 0.6s;
+  }
+  .card:hover { box-shadow: 0 0 60px rgba(77, 166, 255, 0.15); }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+  .label {
+    color: var(--label);
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #4da6ff;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  .price-area {
+    text-align: center;
+    padding: 10px 0 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .price {
+    color: var(--price);
+    font-weight: bold;
+    line-height: 1.2;
+    transition: color 0.4s;
+    white-space: nowrap;
+  }
+  .price.up { color: #00e676; }
+  .price.down { color: #ff5252; }
+
+  .update-time {
+    color: var(--time);
+    font-size: 12px;
+    text-align: center;
+    margin-bottom: 14px;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .font-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--label);
+    font-size: 11px;
+  }
+  .font-control input[type="range"] {
+    width: 100px;
+    height: 4px;
+    -webkit-appearance: none;
+    background: var(--slider-track);
+    border-radius: 2px;
+    outline: none;
+  }
+  .font-control input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--slider-thumb);
+    cursor: pointer;
+  }
+  .font-size-val {
+    color: var(--price);
+    font-weight: bold;
+    min-width: 28px;
+  }
+
+  .sources {
+    display: flex;
+    gap: 4px;
+  }
+  .src-chip {
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--label);
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .src-chip.active {
+    background: var(--source-active);
+    border-color: var(--source-active);
+    color: #fff;
+  }
+
+  .error-msg {
+    display: none;
+    margin-top: 12px;
+    padding: 10px;
+    background: rgba(255, 82, 82, 0.12);
+    border-radius: 8px;
+    font-size: 11px;
+    color: #ff5252;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="header">
+    <span class="label">ETH / USDT</span>
+    <div class="status-dot" id="dot"></div>
+  </div>
+
+  <div class="price-area">
+    <div class="price" id="price" style="font-size:42px;">$ ----.--</div>
+  </div>
+
+  <div class="update-time" id="time">--</div>
+
+  <div class="controls">
+    <div class="font-control">
+      <span>A</span>
+      <input type="range" id="fontSlider" min="18" max="72" value="42" step="1">
+      <span style="font-size:16px;">A</span>
+      <span class="font-size-val" id="fontVal">42px</span>
+    </div>
+    <div class="sources" id="sources"></div>
+  </div>
+
+  <div class="error-msg" id="error"></div>
+</div>
+
+<script>
+const API_SOURCES = [
+  { name: "Binance", url: "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT",
+    parse: d => parseFloat(d.price) },
+  { name: "Bybit", url: "https://api.bybit.com/v5/market/tickers?category=spot&symbol=ETHUSDT",
+    parse: d => parseFloat(d.result.list[0].lastPrice) },
+  { name: "OKX", url: "https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT",
+    parse: d => parseFloat(d.data[0].last) },
+  { name: "Bitget", url: "https://api.bitget.com/api/v2/spot/market/tickers?symbol=ETHUSDT",
+    parse: d => parseFloat(d.data[0].lastPr) },
+];
+
+const priceEl = document.getElementById("price");
+const timeEl = document.getElementById("time");
+const dotEl = document.getElementById("dot");
+const errorEl = document.getElementById("error");
+const fontSlider = document.getElementById("fontSlider");
+const fontValEl = document.getElementById("fontVal");
+const sourcesEl = document.getElementById("sources");
+
+let lastPrice = null;
+let currentSource = 0;
+let fetchQueue = [];
+let activeRequests = 0;
+const MAX_CONCURRENT = 6;
+
+// ---- UI 控制 ----
+fontSlider.addEventListener("input", () => {
+  const v = fontSlider.value;
+  priceEl.style.fontSize = v + "px";
+  fontValEl.textContent = v + "px";
+});
+
+function renderSources() {
+  sourcesEl.innerHTML = API_SOURCES.map((s, i) =>
+    `<button class="src-chip${i === currentSource ? ' active' : ''}" onclick="switchSource(${i})">${s.name}</button>`
+  ).join("");
+}
+renderSources();
+
+function switchSource(idx) {
+  currentSource = idx;
+  renderSources();
+  lastPrice = null;
+}
+
+// ---- 获取价格 ----
+async function fetchPrice(src) {
+  try {
+    const resp = await fetch(src.url);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+    const price = src.parse(data);
+    return { price, src: src.name, ok: true };
+  } catch (e) {
+    return { price: null, src: src.name, ok: false };
+  }
+}
+
+function updateUI(price, srcName) {
+  let text;
+  if (price >= 10000) text = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  else if (price >= 1) text = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  else text = "$" + price.toFixed(6);
+
+  priceEl.textContent = text;
+
+  if (lastPrice !== null && price !== lastPrice) {
+    priceEl.classList.remove("up", "down");
+    void priceEl.offsetWidth;
+    priceEl.classList.add(price > lastPrice ? "up" : "down");
+    setTimeout(() => priceEl.classList.remove("up", "down"), 800);
+  }
+  lastPrice = price;
+
+  const now = new Date();
+  timeEl.textContent = now.toLocaleTimeString("zh-CN", { hour12: false }) + " · " + srcName;
+}
+
+function showError(msg) {
+  errorEl.style.display = "block";
+  errorEl.textContent = msg;
+  setTimeout(() => { errorEl.style.display = "none"; }, 4000);
+}
+
+// ---- 并发调度 ----
+function schedule() {
+  while (activeRequests < MAX_CONCURRENT) {
+    activeRequests++;
+    const src = API_SOURCES[(currentSource + activeRequests) % API_SOURCES.length];
+    fetchPrice(src).then(result => {
+      activeRequests--;
+      if (result.ok) updateUI(result.price, result.src);
+      schedule();
+    }).catch(() => {
+      activeRequests--;
+      schedule();
+    });
+  }
+}
+
+// 启动
+schedule();
+setInterval(() => {
+  if (activeRequests < MAX_CONCURRENT) schedule();
+}, 800);
+</script>
+
+</body>
+</html>
