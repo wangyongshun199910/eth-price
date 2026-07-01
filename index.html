@@ -27,17 +27,11 @@
     color: #fff;
   }
   .card {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 16px;
+    background: transparent;
     padding: 28px 36px 24px;
     min-width: 360px;
     max-width: 480px;
-    box-shadow: 0 0 40px rgba(77, 166, 255, 0.08);
-    transition: box-shadow 0.6s;
   }
-  .card:hover { box-shadow: 0 0 60px rgba(77, 166, 255, 0.15); }
-
   .header {
     display: flex;
     justify-content: space-between;
@@ -61,7 +55,6 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
   }
-
   .price-area {
     text-align: center;
     padding: 10px 0 16px;
@@ -77,14 +70,12 @@
   }
   .price.up { color: #00e676; }
   .price.down { color: #ff5252; }
-
   .update-time {
     color: var(--time);
     font-size: 12px;
     text-align: center;
     margin-bottom: 14px;
   }
-
   .controls {
     display: flex;
     align-items: center;
@@ -119,11 +110,7 @@
     font-weight: bold;
     min-width: 28px;
   }
-
-  .sources {
-    display: flex;
-    gap: 4px;
-  }
+  .sources { display: flex; gap: 4px; }
   .src-chip {
     padding: 3px 8px;
     border-radius: 10px;
@@ -139,7 +126,6 @@
     border-color: var(--source-active);
     color: #fff;
   }
-
   .error-msg {
     display: none;
     margin-top: 12px;
@@ -159,13 +145,10 @@
     <span class="label">ETH / USDT</span>
     <div class="status-dot" id="dot"></div>
   </div>
-
   <div class="price-area">
     <div class="price" id="price" style="font-size:42px;">$ ----.--</div>
   </div>
-
   <div class="update-time" id="time">--</div>
-
   <div class="controls">
     <div class="font-control">
       <span>A</span>
@@ -175,11 +158,12 @@
     </div>
     <div class="sources" id="sources"></div>
   </div>
-
   <div class="error-msg" id="error"></div>
 </div>
 
 <script>
+// ===== Worker æµ ï½çéå äºéå°ä» Blob éç°ç´¡éæ¶ç¼éå­¸orker æ¶?setInterval æ¶å¶å½å¨´å¿îé£ã¨å¦­å¨´ä¾ç´ =====
+const workerCode = `
 const API_SOURCES = [
   { name: "Binance", url: "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT",
     parse: d => parseFloat(d.price) },
@@ -191,7 +175,47 @@ const API_SOURCES = [
     parse: d => parseFloat(d.data[0].lastPr) },
 ];
 
-const INTERVAL_MS = 5000;  // å§£?ç»æåé?
+const MAX_IN_FLIGHT = 10;
+const INTERVAL_MS = 1000;   // å§£å¿îçã¥å½æ¶â¬æ?
+let inFlight = 0;
+let nextApi = 0;
+
+function fetchOne() {
+  const idx = nextApi % API_SOURCES.length;
+  nextApi++;
+  inFlight++;
+  const src = API_SOURCES[idx];
+  fetch(src.url)
+    .then(r => {
+      if (!r.ok) throw new Error("bad status");
+      return r.json();
+    })
+    .then(data => {
+      const price = src.parse(data);
+      self.postMessage({ price, src: src.name });
+    })
+    .catch(() => {})
+    .finally(() => {
+      inFlight--;
+      fill();
+    });
+}
+
+function fill() {
+  while (inFlight < MAX_IN_FLIGHT) {
+    fetchOne();
+  }
+}
+
+// éîå§©éæ°±çéå²ï½å©â³èé?fill();
+// å§£å¿îå¦«â¬éã¥èçã¥å½
+setInterval(fill, INTERVAL_MS);
+`;
+
+const blob = new Blob([workerCode], { type: "application/javascript" });
+const worker = new Worker(URL.createObjectURL(blob));
+
+// ===== æ¶è¤åç»?UI =====
 const priceEl = document.getElementById("price");
 const timeEl = document.getElementById("time");
 const dotEl = document.getElementById("dot");
@@ -200,46 +224,15 @@ const fontSlider = document.getElementById("fontSlider");
 const fontValEl = document.getElementById("fontVal");
 const sourcesEl = document.getElementById("sources");
 
-let lastPrice = null;
-let currentSource = 0;
+const API_NAMES = ["Binance", "Bybit", "OKX", "Bitget"];
 
-// ---- UI éºÑå ----
+let lastPrice = null;
+
 fontSlider.addEventListener("input", () => {
   const v = fontSlider.value;
   priceEl.style.fontSize = v + "px";
   fontValEl.textContent = v + "px";
 });
-
-function renderSources() {
-  sourcesEl.innerHTML = API_SOURCES.map((s, i) =>
-    `<button class="src-chip${i === currentSource ? ' active' : ''}" onclick="switchSource(${i})">${s.name}</button>`
-  ).join("");
-}
-renderSources();
-
-function switchSource(idx) {
-  currentSource = idx;
-  renderSources();
-  lastPrice = null;
-}
-
-// ---- é¾å³°å½æµ éç¸éå ç² æ££æ ­â¬å¤ç°®å¯®â¬æ¿®å¬©ç··å¨â³ç¾çæªç´éæ «îæ¶â¬æ¶îåéçºæ®é?----
-async function fetchPrice() {
-  // æµ ?currentSource å¯®â¬æ¿®å¬­ççã¡å¢é?API
-  for (let i = 0; i < API_SOURCES.length; i++) {
-    const src = API_SOURCES[(currentSource + i) % API_SOURCES.length];
-    try {
-      const resp = await fetch(src.url);
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      const price = src.parse(data);
-      return { price, src: src.name, ok: true };
-    } catch (e) {
-      continue;
-    }
-  }
-  return { price: null, src: "N/A", ok: false };
-}
 
 function updateUI(price, srcName) {
   let text;
@@ -261,21 +254,10 @@ function updateUI(price, srcName) {
   timeEl.textContent = now.toLocaleTimeString("zh-CN", { hour12: false }) + " è·¯ " + srcName;
 }
 
-function showError(msg) {
-  errorEl.style.display = "block";
-  errorEl.textContent = msg;
-  setTimeout(() => { errorEl.style.display = "none"; }, 4000);
-}
-
-// ---- ç¹æ°­æ¤ééæ ----
-async function tick() {
-  const result = await fetchPrice();
-  if (result.ok) {
-    updateUI(result.price, result.src);
-  }
-}
-
-tick();  // ç»å¬ªåµéµÑîæ¶â¬å¨?setInterval(tick, INTERVAL_MS);
+worker.onmessage = (e) => {
+  const { price, src } = e.data;
+  updateUI(price, src);
+};
 </script>
 
 </body>
