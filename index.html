@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ETH/USDT 实时价格</title>
+<title>ETH/USDT ç¹ç´æ¤æµ éç¸</title>
 <style>
   :root {
     --bg: #1a1a2e;
@@ -27,12 +27,17 @@
     color: #fff;
   }
   .card {
-    background: transparent;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
     padding: 28px 36px 24px;
     min-width: 360px;
     max-width: 480px;
+    box-shadow: 0 0 40px rgba(77, 166, 255, 0.08);
     transition: box-shadow 0.6s;
   }
+  .card:hover { box-shadow: 0 0 60px rgba(77, 166, 255, 0.15); }
+
   .header {
     display: flex;
     justify-content: space-between;
@@ -47,8 +52,7 @@
     text-transform: uppercase;
   }
   .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 8px; height: 8px;
     border-radius: 50%;
     background: #4da6ff;
     animation: pulse 2s infinite;
@@ -57,6 +61,7 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
   }
+
   .price-area {
     text-align: center;
     padding: 10px 0 16px;
@@ -72,12 +77,14 @@
   }
   .price.up { color: #00e676; }
   .price.down { color: #ff5252; }
+
   .update-time {
     color: var(--time);
     font-size: 12px;
     text-align: center;
     margin-bottom: 14px;
   }
+
   .controls {
     display: flex;
     align-items: center;
@@ -102,8 +109,7 @@
   }
   .font-control input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 16px; height: 16px;
     border-radius: 50%;
     background: var(--slider-thumb);
     cursor: pointer;
@@ -113,6 +119,7 @@
     font-weight: bold;
     min-width: 28px;
   }
+
   .sources {
     display: flex;
     gap: 4px;
@@ -132,6 +139,7 @@
     border-color: var(--source-active);
     color: #fff;
   }
+
   .error-msg {
     display: none;
     margin-top: 12px;
@@ -145,15 +153,19 @@
 </style>
 </head>
 <body>
+
 <div class="card">
   <div class="header">
     <span class="label">ETH / USDT</span>
     <div class="status-dot" id="dot"></div>
   </div>
+
   <div class="price-area">
     <div class="price" id="price" style="font-size:42px;">$ ----.--</div>
   </div>
+
   <div class="update-time" id="time">--</div>
+
   <div class="controls">
     <div class="font-control">
       <span>A</span>
@@ -163,16 +175,23 @@
     </div>
     <div class="sources" id="sources"></div>
   </div>
+
   <div class="error-msg" id="error"></div>
 </div>
+
 <script>
 const API_SOURCES = [
-  { name: "Binance", url: "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT", parse: d => parseFloat(d.price) },
-  { name: "Bybit",  url: "https://api.bybit.com/v5/market/tickers?category=spot&symbol=ETHUSDT", parse: d => parseFloat(d.result.list[0].lastPrice) },
-  { name: "OKX",    url: "https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT", parse: d => parseFloat(d.data[0].last) },
-  { name: "Bitget", url: "https://api.bitget.com/api/v2/spot/market/tickers?symbol=ETHUSDT", parse: d => parseFloat(d.data[0].lastPr) },
+  { name: "Binance", url: "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT",
+    parse: d => parseFloat(d.price) },
+  { name: "Bybit", url: "https://api.bybit.com/v5/market/tickers?category=spot&symbol=ETHUSDT",
+    parse: d => parseFloat(d.result.list[0].lastPrice) },
+  { name: "OKX", url: "https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT",
+    parse: d => parseFloat(d.data[0].last) },
+  { name: "Bitget", url: "https://api.bitget.com/api/v2/spot/market/tickers?symbol=ETHUSDT",
+    parse: d => parseFloat(d.data[0].lastPr) },
 ];
 
+const INTERVAL_MS = 5000;  // å§£?ç»æåé?
 const priceEl = document.getElementById("price");
 const timeEl = document.getElementById("time");
 const dotEl = document.getElementById("dot");
@@ -183,11 +202,8 @@ const sourcesEl = document.getElementById("sources");
 
 let lastPrice = null;
 let currentSource = 0;
-let fetchQueue = [];
-let activeRequests = 0;
-const MAX_CONCURRENT = 6;
 
-// ---- UI 控制 ----
+// ---- UI éºÑå ----
 fontSlider.addEventListener("input", () => {
   const v = fontSlider.value;
   priceEl.style.fontSize = v + "px";
@@ -207,27 +223,29 @@ function switchSource(idx) {
   lastPrice = null;
 }
 
-// ---- 获取价格 ----
-async function fetchPrice(src) {
-  try {
-    const resp = await fetch(src.url);
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    const data = await resp.json();
-    const price = src.parse(data);
-    return { price, src: src.name, ok: true };
-  } catch (e) {
-    return { price: null, src: src.name, ok: false };
+// ---- é¾å³°å½æµ éç¸éå ç² æ££æ ­â¬å¤ç°®å¯®â¬æ¿®å¬©ç··å¨â³ç¾çæªç´éæ «îæ¶â¬æ¶îåéçºæ®é?----
+async function fetchPrice() {
+  // æµ ?currentSource å¯®â¬æ¿®å¬­ççã¡å¢é?API
+  for (let i = 0; i < API_SOURCES.length; i++) {
+    const src = API_SOURCES[(currentSource + i) % API_SOURCES.length];
+    try {
+      const resp = await fetch(src.url);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const price = src.parse(data);
+      return { price, src: src.name, ok: true };
+    } catch (e) {
+      continue;
+    }
   }
+  return { price: null, src: "N/A", ok: false };
 }
 
 function updateUI(price, srcName) {
   let text;
-  if (price >= 10000)
-    text = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  else if (price >= 1)
-    text = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
-  else
-    text = "$" + price.toFixed(6);
+  if (price >= 10000) text = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  else if (price >= 1) text = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  else text = "$" + price.toFixed(6);
 
   priceEl.textContent = text;
 
@@ -240,7 +258,7 @@ function updateUI(price, srcName) {
   lastPrice = price;
 
   const now = new Date();
-  timeEl.textContent = now.toLocaleTimeString("zh-CN", { hour12: false }) + " · " + srcName;
+  timeEl.textContent = now.toLocaleTimeString("zh-CN", { hour12: false }) + " è·¯ " + srcName;
 }
 
 function showError(msg) {
@@ -249,27 +267,16 @@ function showError(msg) {
   setTimeout(() => { errorEl.style.display = "none"; }, 4000);
 }
 
-// ---- 并发调度 ----
-function schedule() {
-  while (activeRequests < MAX_CONCURRENT) {
-    activeRequests++;
-    const src = API_SOURCES[(currentSource + activeRequests) % API_SOURCES.length];
-    fetchPrice(src).then(result => {
-      activeRequests--;
-      if (result.ok) updateUI(result.price, result.src);
-      schedule();
-    }).catch(() => {
-      activeRequests--;
-      schedule();
-    });
+// ---- ç¹æ°­æ¤ééæ ----
+async function tick() {
+  const result = await fetchPrice();
+  if (result.ok) {
+    updateUI(result.price, result.src);
   }
 }
 
-// 启动
-schedule();
-setInterval(() => {
-  if (activeRequests < MAX_CONCURRENT) schedule();
-}, 800);
+tick();  // ç»å¬ªåµéµÑîæ¶â¬å¨?setInterval(tick, INTERVAL_MS);
 </script>
+
 </body>
 </html>
