@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETH ç­¹ç åå¸</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --text: #c9d1d9;
+    --accent: #4da6ff;
+    --bar: #3fb950;
+    --bar2: #4da6ff;
+    --line: #f0883e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: var(--text);
+    padding: 20px;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 18px; color: var(--accent); margin-bottom: 6px; }
+  .sub { font-size: 11px; color: #888; margin-bottom: 16px; }
+
+  .controls { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    padding: 6px 14px; border: 1px solid #30363d;
+    background: #161b22; color: var(--text);
+    border-radius: 6px; cursor: pointer; font-size: 12px;
+    font-family: inherit;
+  }
+  .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .canvas-wrap {
+    background: #161b22;
+    border-radius: 8px;
+    border: 1px solid #30363d;
+    padding: 12px;
+    margin-bottom: 14px;
+    overflow-x: auto;
+  }
+  canvas { display: block; }
+
+  .info {
+    display: flex; gap: 24px; flex-wrap: wrap;
+    font-size: 12px; color: #8b949e; margin-top: 8px;
+  }
+  .info span { color: var(--text); }
+  .legend { display: flex; gap: 16px; font-size: 11px; align-items: center; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; }
+  .legend .dot.green { background: var(--bar); }
+  .legend .dot.orange { background: var(--line); }
+
+  .error-msg {
+    display: none; padding: 10px; margin-top: 12px;
+    background: rgba(255,82,82,0.12); border-radius: 6px;
+    font-size: 11px; color: #ff5252; text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>ETH/USDT ç­¹ç åå¸</h1>
+  <div class="sub" id="rangeLabel">è¿ 7 å¤©å°æ¶Kçº¿ Â· æ¯ä¸ªä»·ä½æäº¤éç´¯å </div>
+
+  <div class="controls">
+    <button class="btn" data-days="3">3 å¤©</button>
+    <button class="btn active" data-days="7">7 å¤©</button>
+    <button class="btn" data-days="14">14 å¤©</button>
+    <span style="margin-left:auto;font-size:11px;color:#888;" id="updateTime">--</span>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot green"></span> æäº¤éï¼ç­¹ç æ°éï¼</span>
+    <span><span class="dot orange"></span> å½åä»·æ ¼</span>
+  </div>
+
+  <div class="info">
+    <div>å½åä»·æ ¼ <span id="curPrice">--</span></div>
+    <div>ç­¹ç å¯éåº <span id="peakZone">--</span></div>
+    <div>æ°æ®æ¥æº <span id="source">--</span></div>
+  </div>
+
+  <div class="error-msg" id="error"></div>
+</div>
+
+<script>
+const BINANCE_KLINES = "https://api.binance.com/api/v3/klines";
+const BINANCE_TICKER = "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT";
+
+let currentDays = 7;
+let klineData = [];
+let curPrice = null;
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+// ===== æ°æ®è·å =====
+async function fetchKlines(days) {
+  const limit = days * 24;
+  const url = `${BINANCE_KLINES}?symbol=ETHUSDT&interval=1h&limit=${limit}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  const raw = await resp.json();
+  return raw.map(k => ({
+    open:  parseFloat(k[1]),
+    high:  parseFloat(k[2]),
+    low:   parseFloat(k[3]),
+    close: parseFloat(k[4]),
+    vol:   parseFloat(k[5]),        // æäº¤éï¼å¸æ¬ä½ï¼
+    qvol:  parseFloat(k[7]),        // æäº¤é¢ï¼USDTï¼
+  }));
+}
+
+async function fetchCurrentPrice() {
+  const resp = await fetch(BINANCE_TICKER);
+  const data = await resp.json();
+  return parseFloat(data.price);
+}
+
+// ===== ç­¹ç åå¸è®¡ç® =====
+function buildDistribution(klines, bins = 60) {
+  const allPrices = [];
+  klines.forEach(k => {
+    // æ¯æ ¹Kçº¿çé«ä½ä»·èå´å¯¹åºä¸ä¸ªä»·æ ¼åºé´ï¼æäº¤éåæå°è¯¥åºé´
+    const range = k.high - k.low;
+    if (range === 0) {
+      allPrices.push({ price: k.close, vol: k.vol });
+      return;
+    }
+    // ç®åå¤çï¼ææäº¤éæé«ä½ä»·åååéå°å¤ä¸ªéæ ·ç¹
+    const steps = Math.max(2, Math.floor(range / 2));
+    for (let i = 0; i <= steps; i++) {
+      const p = k.low + (range * i / steps);
+      allPrices.push({ price: p, vol: k.vol / (steps + 1) });
+    }
+  });
+
+  if (allPrices.length === 0) return [];
+
+  allPrices.sort((a, b) => a.price - b.price);
+  const minP = allPrices[0].price;
+  const maxP = allPrices[allPrices.length - 1].price;
+  const binW = (maxP - minP) / bins;
+
+  const dist = [];
+  for (let i = 0; i < bins; i++) {
+    const binLow = minP + i * binW;
+    const binHigh = binLow + binW;
+    let totalVol = 0;
+    for (const item of allPrices) {
+      if (item.price >= binLow && item.price < binHigh) totalVol += item.vol;
+    }
+    dist.push({
+      low: binLow,
+      high: binHigh,
+      mid: (binLow + binHigh) / 2,
+      vol: totalVol,
+    });
+  }
+  return dist;
+}
+
+// ===== Canvas ç»å¶ =====
+function draw(dist) {
+  const W = 860;
+  const H = 400;
+  const pad = { top: 20, right: 30, bottom: 50, left: 70 };
+  const pw = W - pad.left - pad.right;
+  const ph = H - pad.top - pad.bottom;
+
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.width = Math.min(860, window.innerWidth - 44) + "px";
+  canvas.style.height = "400px";
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (dist.length === 0) return;
+
+  const maxVol = Math.max(...dist.map(d => d.vol));
+  const allPrices = dist.map(d => d.mid);
+  const minP = Math.min(...allPrices);
+  const maxP = Math.max(...allPrices);
+
+  const scaleX = (p) => pad.left + ((p - minP) / (maxP - minP)) * pw;
+  const scaleY = (v) => pad.top + ph - (v / maxVol) * ph;
+
+  // ç½æ ¼çº¿
+  ctx.strokeStyle = "#21262d";
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.top + (ph * i / 5);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+  }
+
+  // ä»·æ ¼è½´æ ç­¾
+  ctx.fillStyle = "#8b949e";
+  ctx.font = "10px Consolas";
+  ctx.textAlign = "right";
+  for (let i = 0; i <= 5; i++) {
+    const p = minP + (maxP - minP) * i / 5;
+    const y = pad.top + ph - (ph * i / 5);
+    ctx.fillText("$" + p.toFixed(0), pad.left - 8, y + 4);
+  }
+
+  // æ±ç¶å¾
+  const barW = Math.max(2, (pw / dist.length) * 0.85);
+  dist.forEach(d => {
+    const x = scaleX(d.mid) - barW / 2;
+    const y = scaleY(d.vol);
+    const h = ph - (d.vol / maxVol) * ph;
+    ctx.fillStyle = "#3fb950";
+    ctx.fillRect(x, y, barW, h);
+  });
+
+  // å½åä»·æ ¼çº¿
+  if (curPrice && curPrice >= minP && curPrice <= maxP) {
+    const cx = scaleX(curPrice);
+    ctx.strokeStyle = "#f0883e";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.moveTo(cx, pad.top); ctx.lineTo(cx, pad.top + ph); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // ä»·æ ¼æ ç­¾
+    ctx.fillStyle = "#f0883e";
+    ctx.font = "bold 11px Consolas";
+    ctx.textAlign = "center";
+    ctx.fillText("$" + curPrice.toFixed(2), cx, pad.top - 6);
+  }
+}
+
+// ===== æ¾ç­¹ç å¯éåº =====
+function findPeakZone(dist) {
+  if (dist.length === 0) return "--";
+  const sorted = [...dist].sort((a, b) => b.vol - a.vol);
+  const top = sorted[0];
+  return `$${top.low.toFixed(0)} ~ $${top.high.toFixed(0)}`;
+}
+
+// ===== ä¸»æµç¨ =====
+async function load(days) {
+  currentDays = days;
+  try {
+    const [klines, price] = await Promise.all([
+      fetchKlines(days),
+      fetchCurrentPrice(),
+    ]);
+    klineData = klines;
+    curPrice = price;
+
+    const dist = buildDistribution(klines, 60);
+    draw(dist);
+
+    document.getElementById("curPrice").textContent = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 2 });
+    document.getElementById("peakZone").textContent = findPeakZone(dist);
+    document.getElementById("source").textContent = "Binance Â· " + klines.length + " æ ¹å°æ¶Kçº¿";
+    document.getElementById("rangeLabel").textContent = `è¿ ${days} å¤©å°æ¶Kçº¿ Â· æ¯ä¸ªä»·ä½æäº¤éç´¯å `;
+    document.getElementById("updateTime").textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  } catch (e) {
+    document.getElementById("error").style.display = "block";
+    document.getElementById("error").textContent = "å è½½å¤±è´¥: " + e.message;
+  }
+}
+
+// ===== UI äºä»¶ =====
+document.querySelectorAll(".btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    load(parseInt(btn.dataset.days));
+  });
+});
+
+// åå§å
+load(7);
+// æ¯30ç§å·æ°
+setInterval(() => load(currentDays), 30000);
+</script>
+</body>
+</html>
