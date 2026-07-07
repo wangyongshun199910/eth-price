@@ -151,8 +151,8 @@ async function load(days) {
     draw(dist);
     document.getElementById("curPrice").textContent = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 2 });
     document.getElementById("peakZone").textContent = findPeak(dist);
-    document.getElementById("source").textContent = "Binance è·¯ " + klines.length + " candles";
-    document.getElementById("rangeLabel").textContent = "Last " + days + " days è·¯ 1h candles è·¯ volume aggregated by price level";
+    document.getElementById("source").textContent = "Binance \u00B7 " + klines.length + " candles";
+    document.getElementById("rangeLabel").textContent = "Last " + days + " days \u00B7 1h candles \u00B7 volume aggregated by price level";
     document.getElementById("updateTime").textContent = new Date().toLocaleTimeString("en-US", { hour12: false });
   } catch (e) {
     document.getElementById("error").style.display = "block";
