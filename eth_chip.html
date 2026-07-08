@@ -124,11 +124,12 @@ function draw(dist) {
     ctx.fillText(label, pad.left - 8, pad.top + ph - ph * i / 5 + 4);
   }
   // X-axis: price labels
-  ctx.fillStyle = "#8b949e"; ctx.font = "10px Consolas"; ctx.textAlign = "center";
-  for (let i = 0; i <= 5; i++) {
-    const p = mins + (maxs - mins) * i / 5;
-    const x = pad.left + pw * i / 5;
-    ctx.fillText("$" + p.toFixed(0), x, H - pad.bottom + 18);
+  const xTicks = 4;
+  ctx.fillStyle = "#8b949e"; ctx.font = "9px Consolas"; ctx.textAlign = "center";
+  for (let i = 0; i <= xTicks; i++) {
+    const p = mins + (maxs - mins) * i / xTicks;
+    const x = pad.left + pw * i / xTicks;
+    ctx.fillText("$" + p.toFixed(0), x, pad.top + ph + 14);
   }
   const barW = Math.max(2, pw / dist.length * 0.85);
   dist.forEach(d => {
