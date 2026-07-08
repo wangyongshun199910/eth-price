@@ -54,6 +54,8 @@ const BINANCE_TICKER = "https://api.binance.com/api/v3/ticker/price?symbol=ETHUS
 
 let currentDays = 7;
 let curPrice = null;
+let pointer = null;
+let distData = null;
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
@@ -145,6 +147,29 @@ function draw(dist) {
     ctx.fillStyle = "#f0883e"; ctx.font = "bold 11px Consolas"; ctx.textAlign = "center";
     ctx.fillText("$" + curPrice.toFixed(2), cx, pad.top - 6);
   }
+  // Crosshair
+  if (pointer) {
+    const px = pointer.x, py = pointer.y;
+    if (px >= pad.left && px <= pad.left + pw && py >= pad.top && py <= pad.top + ph) {
+      const pVal = mins + (px - pad.left) / pw * (maxs - mins);
+      const vVal = maxVol * (1 - (py - pad.top) / ph);
+      const vLabel = vVal >= 1e6 ? (vVal/1e6).toFixed(1)+"M" : vVal >= 1e3 ? (vVal/1e3).toFixed(1)+"K" : vVal.toFixed(0);
+      ctx.strokeStyle = "#aaa"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(pad.left, py); ctx.lineTo(pad.left + pw, py); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px, pad.top); ctx.lineTo(px, pad.top + ph); ctx.stroke();
+      ctx.setLineDash([]);
+      // Dot
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+      // Y-axis tag
+      ctx.fillStyle = "#fff"; ctx.font = "bold 11px Consolas"; ctx.textAlign = "right";
+      const tagY = Math.max(14, py - 6);
+      ctx.fillText(vLabel + " ETH", pad.left - 10, tagY);
+      // X-axis tag
+      ctx.textAlign = "center";
+      const tagX = Math.min(W - 40, Math.max(40, px));
+      ctx.fillText("$" + pVal.toFixed(2), tagX, H - 8);
+    }
+  }
 }
 
 function findPeak(dist) {
@@ -159,6 +184,7 @@ async function load(days) {
     const [klines, price] = await Promise.all([fetchKlines(days), fetchCurrentPrice()]);
     curPrice = price;
     const dist = buildDistribution(klines, 60);
+    distData = dist;
     draw(dist);
     document.getElementById("curPrice").textContent = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 2 });
     document.getElementById("peakZone").textContent = findPeak(dist);
@@ -178,6 +204,21 @@ document.querySelectorAll(".btn").forEach(btn => {
     load(+btn.dataset.days);
   });
 });
+
+function handlePointer(e) {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top) * scaleY;
+  pointer = { x: cx, y: cy };
+  if (distData) draw(distData);
+}
+function clearPointer() { pointer = null; if (distData) draw(distData); }
+canvas.addEventListener("click", handlePointer);
+canvas.addEventListener("touchstart", handlePointer, { passive: false });
+document.querySelector(".canvas-wrap").addEventListener("dblclick", clearPointer);
 
 load(7);
 setInterval(() => load(currentDays), 30000);
