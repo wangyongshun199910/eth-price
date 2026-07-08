@@ -210,14 +210,16 @@ function handlePointer(e) {
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
-  const cx = (e.clientX - rect.left) * scaleX;
-  const cy = (e.clientY - rect.top) * scaleY;
+  const ev = e.touches ? e.touches[0] : e;
+  const cx = (ev.clientX - rect.left) * scaleX;
+  const cy = (ev.clientY - rect.top) * scaleY;
   pointer = { x: cx, y: cy };
   if (distData) draw(distData);
 }
 function clearPointer() { pointer = null; if (distData) draw(distData); }
-canvas.addEventListener("click", handlePointer);
+canvas.addEventListener("pointerdown", handlePointer);
 canvas.addEventListener("touchstart", handlePointer, { passive: false });
+canvas.style.touchAction = "manipulation";
 document.querySelector(".canvas-wrap").addEventListener("dblclick", clearPointer);
 
 load(7);
