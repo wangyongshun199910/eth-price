@@ -173,3 +173,178 @@ setInterval(() => load(currentDays), 30000);
 </script>
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETH Volume Profile</title>
+<style>
+  :root { --bg: #0d1117; --text: #c9d1d9; --accent: #4da6ff; --bar: #3fb950; --line: #f0883e; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); font-family: 'Consolas', 'Courier New', monospace; color: var(--text); padding: 20px; }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 18px; color: var(--accent); margin-bottom: 6px; }
+  .sub { font-size: 11px; color: #888; margin-bottom: 16px; }
+  .controls { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 6px 14px; border: 1px solid #30363d; background: #161b22; color: var(--text); border-radius: 6px; cursor: pointer; font-size: 12px; font-family: inherit; }
+  .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .canvas-wrap { background: #161b22; border-radius: 8px; border: 1px solid #30363d; padding: 12px; margin-bottom: 14px; overflow-x: auto; }
+  canvas { display: block; }
+  .info { display: flex; gap: 24px; flex-wrap: wrap; font-size: 12px; color: #8b949e; margin-top: 8px; }
+  .info strong { color: var(--text); }
+  .legend { display: flex; gap: 16px; font-size: 11px; align-items: center; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; }
+  .dot.green { background: var(--bar); }
+  .dot.orange { background: var(--line); }
+  .error-msg { display: none; padding: 10px; margin-top: 12px; background: rgba(255,82,82,0.12); border-radius: 6px; font-size: 11px; color: #ff5252; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>ETH/USDT Volume Profile</h1>
+  <div class="sub" id="rangeLabel">Last 7 days &middot; 1h candles &middot; volume aggregated by price level</div>
+  <div class="controls">
+    <button class="btn" data-days="3">3d</button>
+    <button class="btn active" data-days="7">7d</button>
+    <button class="btn" data-days="14">14d</button>
+    <span style="margin-left:auto;font-size:11px;color:#888;" id="updateTime">--</span>
+  </div>
+  <div class="canvas-wrap"><canvas id="canvas"></canvas></div>
+  <div class="legend">
+    <span><span class="dot green"></span> Volume (position size)</span>
+    <span><span class="dot orange"></span> Current price</span>
+  </div>
+  <div class="info">
+    <div>Price <strong id="curPrice">--</strong></div>
+    <div>High Volume Node <strong id="peakZone">--</strong></div>
+    <div>Source <strong id="source">--</strong></div>
+  </div>
+  <div class="error-msg" id="error"></div>
+</div>
+
+<script>
+const BINANCE_KLINES = "https://api.binance.com/api/v3/klines";
+const BINANCE_TICKER = "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT";
+
+let currentDays = 7;
+let curPrice = null;
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+async function fetchKlines(days) {
+  const limit = days * 24;
+  const url = `${BINANCE_KLINES}?symbol=ETHUSDT&interval=1h&limit=${limit}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  const raw = await resp.json();
+  return raw.map(k => ({
+    open: +k[1], high: +k[2], low: +k[3], close: +k[4], vol: +k[5], qvol: +k[7]
+  }));
+}
+
+async function fetchCurrentPrice() {
+  const resp = await fetch(BINANCE_TICKER);
+  return parseFloat((await resp.json()).price);
+}
+
+function buildDistribution(klines, bins = 60) {
+  const pts = [];
+  klines.forEach(k => {
+    const range = k.high - k.low;
+    if (range === 0) { pts.push({ p: k.close, v: k.vol }); return; }
+    const steps = Math.max(2, Math.floor(range / 2));
+    for (let i = 0; i <= steps; i++) {
+      pts.push({ p: k.low + range * i / steps, v: k.vol / (steps + 1) });
+    }
+  });
+  if (!pts.length) return [];
+  pts.sort((a, b) => a.p - b.p);
+  const minP = pts[0].p, maxP = pts[pts.length - 1].p;
+  const binW = (maxP - minP) / bins;
+  const dist = [];
+  for (let i = 0; i < bins; i++) {
+    const lo = minP + i * binW, hi = lo + binW;
+    let tv = 0;
+    for (const it of pts) { if (it.p >= lo && it.p < hi) tv += it.v; }
+    dist.push({ lo, hi, mid: (lo + hi) / 2, vol: tv });
+  }
+  return dist;
+}
+
+function draw(dist) {
+  const W = 860, H = 400;
+  const pad = { top: 20, right: 30, bottom: 50, left: 70 };
+  const pw = W - pad.left - pad.right, ph = H - pad.top - pad.bottom;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = Math.min(860, innerWidth - 44) + "px";
+  canvas.style.height = "400px";
+  ctx.clearRect(0, 0, W, H);
+  if (!dist.length) return;
+  const maxVol = Math.max(...dist.map(d => d.vol));
+  const mins = Math.min(...dist.map(d => d.mid)), maxs = Math.max(...dist.map(d => d.mid));
+  const sx = p => pad.left + (p - mins) / (maxs - mins) * pw;
+  const sy = v => pad.top + ph - v / maxVol * ph;
+
+  ctx.strokeStyle = "#21262d"; ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.top + ph * i / 5;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+  }
+  ctx.fillStyle = "#8b949e"; ctx.font = "10px Consolas"; ctx.textAlign = "right";
+  for (let i = 0; i <= 5; i++) {
+    const p = mins + (maxs - mins) * i / 5;
+    ctx.fillText("$" + p.toFixed(0), pad.left - 8, pad.top + ph - ph * i / 5 + 4);
+  }
+  const barW = Math.max(2, pw / dist.length * 0.85);
+  dist.forEach(d => {
+    const x = sx(d.mid) - barW / 2, y = sy(d.vol), h = ph - d.vol / maxVol * ph;
+    ctx.fillStyle = "#3fb950"; ctx.fillRect(x, y, barW, h);
+  });
+  if (curPrice && curPrice >= mins && curPrice <= maxs) {
+    const cx = sx(curPrice);
+    ctx.strokeStyle = "#f0883e"; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.moveTo(cx, pad.top); ctx.lineTo(cx, pad.top + ph); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#f0883e"; ctx.font = "bold 11px Consolas"; ctx.textAlign = "center";
+    ctx.fillText("$" + curPrice.toFixed(2), cx, pad.top - 6);
+  }
+}
+
+function findPeak(dist) {
+  if (!dist.length) return "--";
+  const top = [...dist].sort((a, b) => b.vol - a.vol)[0];
+  return "$" + top.lo.toFixed(0) + " ~ $" + top.hi.toFixed(0);
+}
+
+async function load(days) {
+  currentDays = days;
+  try {
+    const [klines, price] = await Promise.all([fetchKlines(days), fetchCurrentPrice()]);
+    curPrice = price;
+    const dist = buildDistribution(klines, 60);
+    draw(dist);
+    document.getElementById("curPrice").textContent = "$" + price.toLocaleString("en-US", { minimumFractionDigits: 2 });
+    document.getElementById("peakZone").textContent = findPeak(dist);
+    document.getElementById("source").textContent = "Binance \u00B7 " + klines.length + " candles";
+    document.getElementById("rangeLabel").textContent = "Last " + days + " days \u00B7 1h candles \u00B7 volume aggregated by price level";
+    document.getElementById("updateTime").textContent = new Date().toLocaleTimeString("en-US", { hour12: false });
+  } catch (e) {
+    document.getElementById("error").style.display = "block";
+    document.getElementById("error").textContent = "Load failed: " + e.message;
+  }
+}
+
+document.querySelectorAll(".btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    load(+btn.dataset.days);
+  });
+});
+
+load(7);
+setInterval(() => load(currentDays), 30000);
+</script>
+</body>
+</html>
